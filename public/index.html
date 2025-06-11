@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Chat</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      background: linear-gradient(to right, #667eea, #764ba2);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 700px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      padding: 30px;
+      display: none;
+      position: relative;
+    }
+
+    .card.active {
+      display: block;
+    }
+
+    h2 {
+      text-align: center;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+
+    input, button {
+      padding: 12px 18px;
+      border-radius: 25px;
+      font-size: 1rem;
+      border: none;
+      outline: none;
+    }
+
+    input {
+      flex: 1;
+      border: 1px solid #ddd;
+      background: #fff;
+    }
+
+    .btn {
+      background: linear-gradient(to right, #667eea, #764ba2);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    }
+
+    .start-screen, .chat-screen {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .chat-screen {
+      display: none;
+    }
+
+    .messages {
+      height: 400px;
+      overflow-y: auto;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 10px;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .message {
+      max-width: 70%;
+      padding: 10px 15px;
+      border-radius: 20px;
+      background: #fff;
+      align-self: flex-start;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .message.self {
+      background: #667eea;
+      color: #fff;
+      align-self: flex-end;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    form {
+      display: flex;
+      gap: 10px;
+    }
+
+    .room-code {
+      font-weight: bold;
+      color: #fff;
+      text-align: center;
+    }
+
+    @media (max-width: 600px) {
+      .card {
+        padding: 20px;
+      }
+
+      input, button {
+        width: 100%;
+      }
+
+      form {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Start Screen -->
+  <div class="card active" id="startScreen">
+    <div class="start-screen">
+      <h2>Start or Join a Live Chat</h2>
+      <input type="text" id="name" placeholder="Enter your name" />
+      <p class="room-code">Room Code: <span id="code"></span></p>
+      <button class="btn" onclick="startChat()">Start Chat</button>
+      <hr style="border: none; height: 1px; background: rgba(255,255,255,0.3);">
+      <input type="text" id="joinCode" placeholder="Enter 4-digit room code" maxlength="4" />
+      <button class="btn" onclick="joinChat()">Join Chat</button>
+    </div>
+  </div>
+
+  <!-- Chat Screen -->
+  <div class="card" id="chatScreen">
+    <h2>Chat Room: <span id="roomCode"></span></h2>
+    <div class="messages" id="messages"></div>
+    <form onsubmit="sendMessage(); return false;">
+      <input type="text" id="message" placeholder="Type your message..." autocomplete="off" />
+      <button class="btn" type="submit">Send</button>
+    </form>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+
+    const startScreen = document.getElementById('startScreen');
+    const chatScreen = document.getElementById('chatScreen');
+    const messagesDiv = document.getElementById('messages');
+    let userName, roomCode;
+
+    function generateCode() {
+      return Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
+    document.getElementById('code').textContent = generateCode();
+
+    function startChat() {
+      userName = document.getElementById('name').value.trim();
+      roomCode = document.getElementById('code').textContent;
+      if (!userName) return alert("Enter your name");
+      joinRoom(roomCode);
+    }
+
+    function joinChat() {
+      userName = document.getElementById('name').value.trim();
+      roomCode = document.getElementById('joinCode').value.trim();
+      if (!userName || roomCode.length !== 4 || isNaN(roomCode)) {
+        return alert("Enter valid name and 4-digit code");
+      }
+      joinRoom(roomCode);
+    }
+
+    function joinRoom(code) {
+      socket.emit('joinRoom', code);
+      startScreen.classList.remove('active');
+      chatScreen.classList.add('active');
+      document.getElementById('roomCode').textContent = code;
+    }
+
+    function sendMessage() {
+      const msg = document.getElementById('message').value.trim();
+      if (msg) {
+        socket.emit('chatMessage', { roomCode, name: userName, message: msg });
+        appendMessage(`${userName}: ${msg}`, true);
+        document.getElementById('message').value = '';
+      }
+    }
+
+    socket.on('message', msg => {
+      if (!msg.startsWith(userName + ':')) {
+        appendMessage(msg, false);
+      }
+    });
+
+    function appendMessage(text, isSelf) {
+      const p = document.createElement('div');
+      p.className = 'message' + (isSelf ? ' self' : '');
+      p.textContent = text;
+      messagesDiv.appendChild(p);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+  </script>
+</body>
+</html>
